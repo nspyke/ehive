@@ -72,7 +72,7 @@ class ApiClient
      *
      * @return Domain\Account\AccountsCollection
      */
-    public function getAccountsInEHive($query, $sort, $direction, $offset = 0, $limit = 10)
+    public function getAccountsInEHive($query, $sort = null, $direction = null, $offset = 0, $limit = 10)
     {
         $accountsDao = new Dao\Accounts($this->transport);
         $accountsCollection = $accountsDao->getAccountsInEHive($query, $sort, $direction, $offset, $limit);
@@ -90,7 +90,7 @@ class ApiClient
      *
      * @return Domain\Account\AccountsCollection
      */
-    public function getAccountsInCommunity($communityId, $query, $sort, $direction, $offset = 0, $limit = 10)
+    public function getAccountsInCommunity($communityId, $query, $sort = null, $direction = null, $offset = 0, $limit = 10)
     {
         $accountsDao = new Dao\Accounts($this->transport);
         $accountsCollection = $accountsDao->getAccountsInCommunity(
@@ -130,7 +130,7 @@ class ApiClient
      *
      * @return Domain\Community\CommunitiesCollection
      */
-    public function getCommunitiesInEHive($query, $sort, $direction, $offset = 0, $limit = 10)
+    public function getCommunitiesInEHive($query, $sort = null, $direction = null, $offset = 0, $limit = 10)
     {
         $communitiesDao = new Dao\Communities($this->transport);
         $communitiesCollection = $communitiesDao->getCommunitiesInEHive($query, $sort, $direction, $offset, $limit);
@@ -165,7 +165,7 @@ class ApiClient
      *
      * @return Domain\ObjectRecord\ObjectRecordsCollection
      */
-    public function getObjectRecordsInEHive($query, $hasImages = false, $sort, $direction, $offset = 0, $limit = 10)
+    public function getObjectRecordsInEHive($query, $hasImages = false, $sort = null, $direction = null, $offset = 0, $limit = 10)
     {
         $objectRecordsDao = new Dao\ObjectRecords($this->transport);
         $objectRecordsCollection = $objectRecordsDao->getObjectRecordsInEHive(
@@ -196,8 +196,8 @@ class ApiClient
         $accountId,
         $query,
         $hasImages = false,
-        $sort,
-        $direction,
+        $sort = null,
+        $direction = null,
         $offset = 0,
         $limit = 10,
         $content = "public"
@@ -232,8 +232,8 @@ class ApiClient
         $communityId,
         $query,
         $hasImages = false,
-        $sort,
-        $direction,
+        $sort = null,
+        $direction = null,
         $offset = 0,
         $limit = 10
     ) {
@@ -268,8 +268,8 @@ class ApiClient
         $accountId,
         $query,
         $hasImages = false,
-        $sort,
-        $direction,
+        $sort = null,
+        $direction = null,
         $offset = 0,
         $limit = 10
     ) {

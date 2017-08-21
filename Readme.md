@@ -5,9 +5,10 @@
 Fork of the EHive PHP client version 2.1.2 released by Vernon Systems in August 2017, under the GPL v2 licence.
 This library has been released under GPL v3 licence.
 
-This fork adds name spacing and Composer support with PSR-4 auto-loading.
+This fork adds namespacing, Packagist and Composer support, PSR-4 auto-loading, PSR-16 caching, PSR-3 logging, 
+and 90%+ unit test coverage.
 
-### Usage
+**Usage**
 
 ```php
 use EHive\ApiClient;
@@ -22,6 +23,34 @@ $client = new ApiClient($transport);
 ```
 
 Then call the methods on the ApiClient object to get the relevant domain object.
+
+#### Caching
+[PSR-16](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-16-simple-cache.md) simple caching has been 
+implemented to cache GET requests. We recommend [symfony/cache](https://packagist.org/packages/symfony/cache), but
+any implementation can be used. You can find implementations by looking for packages providing 
+the [psr/simple-cache-implementation](https://packagist.org/providers/psr/simple-cache-implementation) virtual package.
+
+**Usage**
+```php
+$cache = new MyCache(); // which implements \Psr\SimpleCache\CacheInterface
+$transport = new Transport(...);
+$transport->setCache($cache);
+$client = new ApiClient($transport);
+```
+
+#### Logging
+[PSR-3](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-3-logger-interface.md) logging has also been
+implemented to log errors. We recommend using [monolog/monolog](https://packagist.org/packages/monolog/monolog).
+
+**Usage**
+```php
+$logger = new MyLogger(); // which implements \Psr\Log\LoggerInterface
+$transport = new Transport(...);
+$transport->setLogger($logger);
+$client = new ApiClient($transport);
+```
+
+## API Client Methods
 
 #### Accounts
 ```php

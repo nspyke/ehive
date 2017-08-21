@@ -16,12 +16,10 @@
 
 namespace EHive\Exception;
 
-class ForbiddenException extends \Exception
+class ForbiddenException extends ApiException
 {
-    protected $message;
-
     public function __construct($message = null)
     {
-        $this->message = "ERROR MESSAGE: {$message}.";
+        parent::__construct("ERROR MESSAGE: {$message}.");
     }
 }

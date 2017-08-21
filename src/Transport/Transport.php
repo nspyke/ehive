@@ -17,103 +17,116 @@ namespace EHive\Transport;
 
 use EHive\Domain\BadRequestMessage;
 use EHive\Exception;
-use Memcache;
+use Psr\Log\LoggerAwareInterface;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
+use Psr\SimpleCache\CacheInterface;
+use EHive\Cache\NullCache;
 
-class Transport implements TransportInterface
+class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareInterface
 {
-    const HTTPS_PROTOCOL = 'https://';
-    const API_URL = "ehive.com/api";
+    const API_URL = "https://ehive.com/api";
     const GRANT_TYPE_AUTHORIZATION_CODE = "authorization_code";
 
     const OAUTH_TOKEN_ENDPOINT_PATH = '/oauth2/v2/token';
     const OAUTH_AUTHORIZATION_ENDPOINT_PATH = '/oauth2/v2/authorize';
 
-    const OAUTH_TOKEN_MISSING = 'OAuth Token is missing after the server said it has vended it. This is a fatal error and should be reported at http://forum.ehive.com.';
-    const RESOURCE_NOT_FOUND = 'Resource Not Found. Please check that your request URL is valid.';
+    const OAUTH_TOKEN_MISSING = 'OAuth Token is missing after the server said it has returned it. '.
+                                'This is a fatal error  and should be reported at http://forum.ehive.com';
+    const RESOURCE_NOT_FOUND = 'Resource Not Found. Please check that your request URL is valid';
     const EHIVE_DOWN = 'eHive is currently down for a short period of maintenance. HTTP response code: 503';
     const UNEXPECTED_ERROR = 'An unexpected error has occured while trying to access the eHive API. HTTP response code: ';
 
-    private $apiUrl;
+    /**
+     * @var string
+     */
+    private $apiUrl = self::API_URL;
+
+    /**
+     * @var string
+     */
     private $clientId;
+
+    /**
+     * @var string
+     */
     private $clientSecret;
+
+    /**
+     * @var string
+     */
     private $trackingId;
 
+    /**
+     * @var string
+     */
     private $oauthToken;
+
+    /**
+     * @var callable
+     */
     private $oauthTokenCallback;
 
-    private $memcachedServers;
-    private $memcacheExpiry;
-    private $memcache;
+    /**
+     * @var CacheInterface
+     */
+    private $cache;
 
+    /**
+     * Cache time to live, defaults to 1 hour.
+     * @var int
+     */
+    private $cacheTtl = 3600;
+
+    /**
+     * @var LoggerInterface
+     */
+    private $logger;
+
+    /**
+     * @var int
+     */
     private $retryAttempts = 0;
 
+    /**
+     * @var bool
+     */
     private $apiAccessByCredentials = false;
 
     /**
-     * @param string    $clientId        eHive API key client Id
-     * @param string    $clientSecret    eHive API key client secret
-     * @param string    $trackingId      eHive API key tracking Id.
-     * @param string    $oauthToken      The OAuthToken vendered by a previous request API request.
-     * @param callable  $oauthTokenCallback A function that takes a single String parameter for a vendered OAuth Token.
-     * @param array     $memcachedServers  array of hosts and ports for Memcached services. When null memcache is disabled.
-     * @param int       $memcacheExpiry  cache expiry time in seconds.
+     * @param string|null   $clientId           eHive API key client Id
+     * @param string|null   $clientSecret       eHive API key client secret
+     * @param string|null   $trackingId         eHive API key tracking Id.
+     * @param string|null   $oauthToken         The OAuthToken returned by a previous request API request.
+     * @param callable|null $oauthTokenCallback A function that takes a single string parameter for a returned OAuth
+     *                                          Token.
      *
      * Example of $oauthTokenCallback:
-     *      function oauthTokenCallback($oauthToken) {
-     *         // persist the vendored oauthToken for reuse with the next instantiation of an ApiClient class.
-     *      }
-     *
-     * Example of $memcachedServers:
-     *      Memcached on the same server - array('localhost:11211')
-     *      Memcached distributed on two servers - array('192.168.1.4:11211', '192.168.1.5:11211')
+     * function oauthTokenCallback(OauthCredentials $oauthCredentials) {
+     *     // persist the returned OAuth Credentials for reuse with the next instantiation of an ApiClient class.
+     * }
      *
      */
     public function __construct(
-        $clientId = '',
-        $clientSecret = '',
-        $trackingId = '',
-        $oauthToken = '',
-        $oauthTokenCallback = null,
-        $memcachedServers = null,
-        $memcacheExpiry = 300
+        $clientId = null,
+        $clientSecret = null,
+        $trackingId = null,
+        $oauthToken = null,
+        callable $oauthTokenCallback = null
     ) {
-
-        $this->apiUrl = self::API_URL;
         $this->clientId = $clientId;
         $this->clientSecret = $clientSecret;
         $this->trackingId = $trackingId;
         $this->oauthToken = $oauthToken;
         $this->oauthTokenCallback = $oauthTokenCallback;
+        $this->cache = new NullCache();
+        $this->logger = new NullLogger();
 
-        $this->memcachedServers = $memcachedServers;
-        $this->memcacheExpiry = $memcacheExpiry;
-
-        if ((is_null($clientId) == false) && (is_null($clientSecret) == false)) {
+        if (is_null($clientId) === false and is_null($clientSecret) === false) {
             $this->apiAccessByCredentials = true;
         } else {
             $this->apiAccessByCredentials = false;
         }
-    }
-
-    public function setClientId($clientId)
-    {
-        $this->clientId = $clientId;
-
-        return $this;
-    }
-
-    public function setClientSecret($clientSecret)
-    {
-        $this->clientSecret = $clientSecret;
-
-        return $this;
-    }
-
-    public function setTrackingId($trackingId)
-    {
-        $this->trackingId = $trackingId;
-
-        return $this;
     }
 
     public function setOauthToken($oauthToken)
@@ -123,7 +136,7 @@ class Transport implements TransportInterface
         return $this;
     }
 
-    public function setOauthTokenCallback($oauthTokenCallback)
+    public function setOauthTokenCallback(callable $oauthTokenCallback)
     {
         $this->oauthTokenCallback = $oauthTokenCallback;
 
@@ -137,39 +150,67 @@ class Transport implements TransportInterface
         return $this;
     }
 
-    public function get($path, $queryString = '', $useCache = false)
+    /**
+     * Set a PSR-16 compatible cache object
+     *
+     * @param CacheInterface $cache
+     *
+     * @return $this
+     */
+    public function setCache(CacheInterface $cache)
+    {
+        $this->cache = $cache;
+
+        return $this;
+    }
+
+    /**
+     * @param int $cacheTtl
+     *
+     * @return $this
+     */
+    public function setCacheTtl($cacheTtl)
+    {
+        $this->cacheTtl = $cacheTtl;
+
+        return $this;
+    }
+
+    /**
+     * Set a PSR-3 compatible logger object
+     *
+     * @param LoggerInterface $logger
+     *
+     * @return $this
+     */
+    public function setLogger(LoggerInterface $logger)
+    {
+        $this->logger = $logger;
+
+        return $this;
+    }
+
+    /**
+     * @param string $path
+     * @param string $queryString
+     *
+     * @return array|mixed|null|string
+     * @throws Exception\ApiException
+     * @throws Exception\UnauthorizedException
+     */
+    public function get($path, $queryString = '')
     {
         // Look in the cache first.
-        if (!is_null($this->memcachedServers) && $useCache === true) {
-            $this->memcache = new Memcache();
-
-            for ($r = 0; $r < count($this->memcachedServers); $r++) {
-                $hostport = explode(":", $this->memcachedServers[$r]);
-
-                $host = $hostport[0];
-                $port = intval($hostport[1]);
-
-                $this->memcache->addServer($host, $port);
-            }
-
-            $cachedValue = $this->memcache->get($this->memcacheKey($path, $queryString));
-            if (!$cachedValue === false) {
-                $this->memcache->close();
-
-                return $cachedValue;
-            }
+        $key = $this->cacheKey($path, $queryString);
+        if ($this->cache->has($key)) {
+            return $this->cache->get($key);
         }
-
-        $ch = curl_init();
 
         $uri = $this->apiUrl . $path;
 
         $completeUrl = $this->createUrl($uri, $queryString);
 
         $oauthCredentials = $this->getOauthCredentials();
-
-        curl_setopt($ch, CURLOPT_URL, $completeUrl);
-        curl_setopt($ch, CURLOPT_HEADER, 0);
 
         $headers = [];
 
@@ -181,6 +222,9 @@ class Transport implements TransportInterface
             $headers[] = 'Grant-Type: ' . self::GRANT_TYPE_AUTHORIZATION_CODE;
         }
 
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $completeUrl);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -188,43 +232,22 @@ class Transport implements TransportInterface
         $response = curl_exec($ch);
 
         if (curl_errno($ch)) {
-            error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+            $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                'url' => $completeUrl,
+            ]);
         }
 
         $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
         switch ($httpResponseCode) {
             case 200:
                 $json = json_decode($response);
-                curl_close($ch);
-
-                // Add result to the cache then close.
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->add($this->memcacheKey($path, $queryString), $json, false, $this->memcacheExpiry);
-                    $this->memcache->close();
-                }
+                $this->cache->set($this->cacheKey($path, $queryString), $json, $this->cacheTtl);
 
                 return $json;
-                break;
-
-            case 400:
-                $json = json_decode($response);
-                curl_close($ch);
-
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-
-                throw new Exception\BadRequestException($json);
-                break;
 
             case 401:
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
                 if ($this->apiAccessByCredentials && $this->retryAttempts < 3) {
                     $oauthCredentials = $this->getAuthenticated();
 
@@ -234,79 +257,21 @@ class Transport implements TransportInterface
 
                     $this->retryAttempts = $this->retryAttempts + 1;
 
-                    $json = $this->get($path, $queryString, $useCache);
-
-                    return $json;
+                    return $this->get($path, $queryString);
                 } else {
                     $json = json_decode($response);
-                    curl_close($ch);
 
-
-                    $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                    throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
+                    throw new Exception\UnauthorizedException(new Exception\StatusMessage($json));
                 }
-                break;
-
-            case 403:
-                $json = json_decode($response);
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-                break;
-
-            case 404:
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                break;
-
-            case 500:
-                $json = json_decode($response);
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                break;
-
-            case 503:
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-                throw new Exception\ApiException(self::EHIVE_DOWN);
                 break;
 
             default:
-                curl_close($ch);
-                if (!is_null($this->memcachedServers) && $useCache === true) {
-                    $this->memcache->close();
-                }
-
-                throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
-                break;
+                $this->handleErrorStatus($httpResponseCode, $response);
         }
     }
 
     public function post($path, $content = '')
     {
-        $ch = curl_init();
-
         $uri = $this->apiUrl . $path;
 
         $completeUrl = $this->createUrl($uri);
@@ -317,11 +282,6 @@ class Transport implements TransportInterface
             $content = json_encode($content);
         }
 
-        curl_setopt($ch, CURLOPT_URL, $completeUrl);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $content);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_HEADER, 0);
-
         $headers = [
             'Content-Type: application/json',
             'Content-Length:' . strlen($content),
@@ -330,6 +290,11 @@ class Transport implements TransportInterface
             'Grant-Type: ' . self::GRANT_TYPE_AUTHORIZATION_CODE,
         ];
 
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $completeUrl);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $content);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -337,28 +302,20 @@ class Transport implements TransportInterface
         $response = curl_exec($ch);
 
         if (curl_errno($ch)) {
-            error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+            $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                'url' => $completeUrl,
+                'content' => $content,
+            ]);
         }
 
         $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
         switch ($httpResponseCode) {
             case 200:
-                $json = json_decode($response);
-                curl_close($ch);
-                break;
-
-            case 400:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                throw new Exception\BadRequestException($json);
-                break;
+                return json_decode($response);
 
             case 401:
-                curl_close($ch);
-
                 if ($this->retryAttempts < 3) {
                     $oauthCredentials = $this->getAuthenticated();
 
@@ -367,60 +324,22 @@ class Transport implements TransportInterface
                     }
 
                     $this->retryAttempts = $this->retryAttempts + 1;
-                    $json = $this->post($path, $content);
+
+                    return $this->post($path, $content);
                 } else {
                     $json = json_decode($response);
-                    curl_close($ch);
 
-
-                    $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                    throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
+                    throw new Exception\UnauthorizedException(new Exception\StatusMessage($json));
                 }
                 break;
 
-            case 403:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-                break;
-
-            case 404:
-                curl_close($ch);
-                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                break;
-
-            case 500:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                break;
-
-            case 503:
-                throw new Exception\ApiException(self::EHIVE_DOWN);
-                break;
-
             default:
-                curl_close($ch);
-                throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
-                break;
+                $this->handleErrorStatus($httpResponseCode, $response);
         }
-
-        return $json;
     }
 
     public function put($path, $content = '')
     {
-        $ch = curl_init();
-
         $uri = $this->apiUrl . $path;
 
         $completeUrl = $this->createUrl($uri);
@@ -431,15 +350,6 @@ class Transport implements TransportInterface
             $content = json_encode($content);
         }
 
-        curl_setopt($ch, CURLOPT_URL, $completeUrl);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $content);
-
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-        //curl_setopt($ch, CURLOPT_PUT, 1);
-
-        curl_setopt($ch, CURLOPT_HEADER, 0);
-
-
         $headers = [
             'Content-Type: application/json',
             'Content-Length:' . strlen($content),
@@ -448,6 +358,11 @@ class Transport implements TransportInterface
             'Grant-Type: ' . self::GRANT_TYPE_AUTHORIZATION_CODE,
         ];
 
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $completeUrl);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $content);
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -455,33 +370,20 @@ class Transport implements TransportInterface
         $response = curl_exec($ch);
 
         if (curl_errno($ch)) {
-            error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+            $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                'url' => $completeUrl,
+                'content' => $content,
+            ]);
         }
 
         $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
         switch ($httpResponseCode) {
             case 200:
-                $json = json_decode($response);
-                curl_close($ch);
-                break;
-
-            case 400:
-                $json = json_decode($response);
-                $badRequestMessage = new BadRequestMessage($json);
-
-                curl_close($ch);
-
-
-                throw new Exception\BadRequestException(
-                    $badRequestMessage->requestMessage,
-                    $badRequestMessage->requestFields
-                );
-                break;
+                return json_decode($response);
 
             case 401:
-                curl_close($ch);
-
                 if ($this->retryAttempts < 3) {
                     $oauthCredentials = $this->getAuthenticated();
 
@@ -490,70 +392,26 @@ class Transport implements TransportInterface
                     }
 
                     $this->retryAttempts = $this->retryAttempts + 1;
-                    $json = $this->post($path, $content);
+
+                    return $this->post($path, $content);
                 } else {
                     $json = json_decode($response);
-                    curl_close($ch);
 
-
-                    $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                    throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
+                    throw new Exception\UnauthorizedException(new Exception\StatusMessage($json));
                 }
-                break;
-
-            case 403:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-                break;
-
-            case 404:
-                curl_close($ch);
-                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                break;
-
-            case 500:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                break;
-
-            case 503:
-                throw new Exception\ApiException(self::EHIVE_DOWN);
-                break;
 
             default:
-                curl_close($ch);
-                throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
-                break;
+                $this->handleErrorStatus($httpResponseCode, $response);
         }
-
-        return $json;
     }
 
     public function delete($path, $queryString = '')
     {
-        $ch = curl_init();
-
         $uri = $this->apiUrl . $path;
 
         $completeUrl = $this->createUrl($uri, $queryString);
 
         $oauthCredentials = $this->getOauthCredentials();
-
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
-        curl_setopt($ch, CURLOPT_URL, $completeUrl);
-        curl_setopt($ch, CURLOPT_HEADER, 0);
-
         $headers = [
             'Content-Type: application/json',
             'Authorization: Basic ' . $oauthCredentials->oauthToken,
@@ -561,6 +419,11 @@ class Transport implements TransportInterface
             'Grant-Type: ' . self::GRANT_TYPE_AUTHORIZATION_CODE,
         ];
 
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
+        curl_setopt($ch, CURLOPT_URL, $completeUrl);
+        curl_setopt($ch, CURLOPT_HEADER, 0);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
@@ -568,20 +431,20 @@ class Transport implements TransportInterface
         $response = curl_exec($ch);
 
         if (curl_errno($ch)) {
-            error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+            $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                'url' => $completeUrl,
+                'queryString' => $queryString,
+            ]);
         }
 
         $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
 
         switch ($httpResponseCode) {
             case 200:
-                $json = json_decode($response);
-                curl_close($ch);
-                break;
+                return json_decode($response);
 
             case 401:
-                curl_close($ch);
-
                 if ($this->retryAttempts < 3) {
                     $oauthCredentials = $this->getAuthenticated();
 
@@ -589,56 +452,20 @@ class Transport implements TransportInterface
                         throw new Exception\ApiException(self::OAUTH_TOKEN_MISSING);
                     }
 
-                    $this->retryAttempts = $this->retryAttempts + 1;
-                    $json = $this->delete($path, $queryString);
+                    $this->retryAttempts++;
+
+                    return $this->delete($path, $queryString);
                 } else {
                     $json = json_decode($response);
-                    curl_close($ch);
 
-
-                    $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                    throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
+                    throw new Exception\UnauthorizedException(new Exception\StatusMessage($json));
                 }
-                break;
-
-            case 403:
-                $json = json_decode($response);
-                curl_close($ch);
-
-                
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-                break;
-
-            case 404:
-                curl_close($ch);
-                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                break;
-
-            case 500:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                break;
-
-            case 503:
-                curl_close($ch);
-                throw new Exception\ApiException(self::EHIVE_DOWN);
-                break;
 
             default:
                 curl_close($ch);
-                throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
+                $this->handleErrorStatus($httpResponseCode, $response);
                 break;
         }
-
-        return $json;
     }
 
     /**
@@ -651,12 +478,11 @@ class Transport implements TransportInterface
      */
     private function getAuthenticated()
     {
-        $tokenEndpointUrl = self::HTTPS_PROTOCOL . $this->apiUrl . self::OAUTH_TOKEN_ENDPOINT_PATH;
-        $authorizaitonEndpointUrl = self::HTTPS_PROTOCOL . $this->apiUrl . self::OAUTH_AUTHORIZATION_ENDPOINT_PATH;
+        $authorisationEndpointUrl = $this->apiUrl . self::OAUTH_AUTHORIZATION_ENDPOINT_PATH;
+        $tokenEndpointUrl = $this->apiUrl . self::OAUTH_TOKEN_ENDPOINT_PATH;
 
         $ch = curl_init();
-
-        curl_setopt($ch, CURLOPT_URL, $authorizaitonEndpointUrl);
+        curl_setopt($ch, CURLOPT_URL, $authorisationEndpointUrl);
         curl_setopt($ch, CURLOPT_POSTFIELDS, '');
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_HEADER, 1);
@@ -678,15 +504,18 @@ class Transport implements TransportInterface
         $response = curl_exec($ch);
 
         if (curl_errno($ch)) {
-            error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+            $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                'url' => $authorisationEndpointUrl,
+            ]);
         }
 
         $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        curl_close($ch);
 
         switch ($httpResponseCode) {
             case 303:
-                $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-                $header = substr($response, 0, $header_size);
+                $header = substr($response, 0, $headerSize);
 
                 $headersArray = explode("\n", $header);
                 $headers = [];
@@ -695,8 +524,6 @@ class Transport implements TransportInterface
                     $headerParts = explode(": ", $header);
                     $headers[$headerParts[0]] = $header;
                 }
-
-                curl_close($ch);
 
                 $ch = curl_init();
 
@@ -716,137 +543,107 @@ class Transport implements TransportInterface
                 $response = curl_exec($ch);
 
                 if (curl_errno($ch)) {
-                    error_log("curl error: " . curl_errno($ch) . " - " . curl_error($ch));
+                    $this->logger->error("curl error: " . curl_errno($ch) . " - " . curl_error($ch), [
+                        'url' => $tokenEndpointUrl,
+                    ]);
                 }
 
                 $httpResponseCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
 
                 switch ($httpResponseCode) {
                     case 200:
                         $json = json_decode($response);
-
-                        curl_close($ch);
-
                         $oauthCredentials = $this->asOauthCredentials($json);
 
-                        array_map($this->oauthTokenCallback, [$oauthCredentials->oauthToken]);
+                        if (is_callable($this->oauthTokenCallback)) {
+                            call_user_func($this->oauthTokenCallback, $oauthCredentials);
+                        }
 
                         $this->oauthToken = $oauthCredentials->oauthToken;
 
                         return $oauthCredentials;
 
-                    case 401:
-                        $json = json_decode($response);
-                        curl_close($ch);
-
-                        $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                        throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
-                        break;
-
-                    case 403:
-                        $json = json_decode($response);
-                        curl_close($ch);
-
-                        $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                        throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-                        break;
-
-                    case 404:
-                        curl_close($ch);
-                        throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                        break;
-
-                    case 500:
-                        $json = json_decode($response);
-                        curl_close($ch);
-
-                        $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                        throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                        break;
-
-                    case 503:
-                        curl_close($ch);
-                        throw new Exception\ApiException(self::EHIVE_DOWN);
-                        break;
-
                     default:
-                        curl_close($ch);
-                        throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
+                        $this->handleErrorStatus($httpResponseCode, $response);
                         break;
                 }
 
-            case 401:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\UnauthorizedException($ehiveStatusMessage->toString());
-
-            case 403:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\ForbiddenException($ehiveStatusMessage->toString());
-
-            case 404:
-                curl_close($ch);
-                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
-                break;
-
-            case 500:
-                $json = json_decode($response);
-                curl_close($ch);
-
-
-                $ehiveStatusMessage = new Exception\StatusMessage($json);
-
-                throw new Exception\FatalServerException($ehiveStatusMessage->toString());
-                break;
-
-            case 503:
-                throw new Exception\ApiException(self::EHIVE_DOWN);
                 break;
 
             default:
-                throw new Exception\ApiException(self::UNEXPECTED_ERROR . $httpResponseCode);
+                $this->handleErrorStatus($httpResponseCode, $response);
                 break;
+        }
+    }
+
+    /**
+     * @param int    $statusCode
+     * @param string $response
+     *
+     * @throws Exception\ApiException
+     * @throws Exception\BadRequestException
+     * @throws Exception\FatalServerException
+     * @throws Exception\ForbiddenException
+     * @throws Exception\NotFoundException
+     * @throws Exception\UnauthorizedException
+     */
+    private function handleErrorStatus($statusCode, $response = null)
+    {
+        switch ($statusCode) {
+            case 400:
+                $json = json_decode($response);
+                $badRequestMessage = new BadRequestMessage($json);
+
+                if (!empty($badRequestMessage->requestMessage) or !empty($badRequestMessage->requestFields)) {
+                    throw new Exception\BadRequestException(
+                        $badRequestMessage->requestMessage,
+                        $badRequestMessage->requestFields
+                    );
+                }
+
+                throw new Exception\BadRequestException('Bad Request');
+
+            case 403:
+                $json = json_decode($response);
+                throw new Exception\ForbiddenException(new Exception\StatusMessage($json));
+
+            case 404:
+                throw new Exception\NotFoundException(self::RESOURCE_NOT_FOUND);
+
+            case 500:
+                $json = json_decode($response);
+                throw new Exception\FatalServerException(new Exception\StatusMessage($json));
+
+            case 503:
+                throw new Exception\ApiException(self::EHIVE_DOWN);
+
+            default:
+                throw new Exception\ApiException(self::UNEXPECTED_ERROR . ' ' . $statusCode);
         }
     }
 
     private function getOauthCredentials()
     {
-        $oauthCredentials = new OauthCredentials();
-
-        $oauthCredentials->clientId = $this->clientId;
-        $oauthCredentials->clientSecret = $this->clientSecret;
-        $oauthCredentials->oauthToken = $this->oauthToken;
-
-        return $oauthCredentials;
+        return new OauthCredentials($this->clientId, $this->clientSecret, $this->oauthToken);
     }
 
     private function createUrl($uri, $queryString = '')
     {
-        if (empty($queryString)) {
-            $uri .= '?trackingId=' . $this->trackingId;
-        } else {
-            $uri .= '?' . $queryString . '&trackingId=' . $this->trackingId;
+        if (!empty($this->trackingId)) {
+            if (empty($queryString)) {
+                $uri .= '?trackingId=' . $this->trackingId;
+            } else {
+                $uri .= '?' . $queryString . '&trackingId=' . $this->trackingId;
+            }
         }
 
-        return self::HTTPS_PROTOCOL . $uri;
+        return $uri;
     }
 
     private function asOauthCredentials($json)
     {
         $oauthCredentials = new OauthCredentials();
-
         $oauthCredentials->clientId = isset($json->clientId) ? $json->clientId : null;
         $oauthCredentials->clientSecret = isset($json->clientSecret) ? $json->clientSecret : null;
         $oauthCredentials->oauthToken = isset($json->oauthToken) ? $json->oauthToken : null;
@@ -854,7 +651,7 @@ class Transport implements TransportInterface
         return $oauthCredentials;
     }
 
-    private function memcacheKey($path, $queryString)
+    private function cacheKey($path, $queryString)
     {
         return md5($path . $queryString);
     }

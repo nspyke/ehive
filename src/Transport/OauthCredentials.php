@@ -22,4 +22,18 @@ class OauthCredentials
     public $clientSecret;
 
     public $oauthToken;
+
+    /**
+     * OauthCredentials constructor.
+     *
+     * @param $clientId
+     * @param $clientSecret
+     * @param $oauthToken
+     */
+    public function __construct($clientId = null, $clientSecret = null, $oauthToken = null)
+    {
+        $this->clientId = $clientId;
+        $this->clientSecret = $clientSecret;
+        $this->oauthToken = $oauthToken;
+    }
 }

@@ -6,3 +6,7 @@ php:
 
 install:
   - composer install
+
+script:
+  - vendor/bin/phpcs --error-severity=1 --warning-severity=7
+  - phpunit

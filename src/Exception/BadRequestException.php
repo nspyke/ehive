@@ -15,15 +15,14 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 
 namespace EHive\Exception;
 
-class BadRequestException extends \Exception
+class BadRequestException extends ApiException
 {
-    public $message;
     public $requestMessage;
     public $requestFields;
 
-    public function __construct($message = '', $requestFields = null)
+    public function __construct($message = null, $requestFields = null)
     {
-        $this->message = $message;
+        parent::__construct($message);
         $this->requestMessage = $message;
         $this->requestFields = $requestFields;
     }

@@ -103,6 +103,4 @@ class ObjectRecordTest extends \PHPUnit_Framework_TestCase
         $this->assertInstanceOf(MediaSet::class, $obj->getMediaSetByIdentifier('mediaSetId1'));
         $this->assertNull($obj->getMediaSetByIdentifier('foo'));
     }
-
-
 }
