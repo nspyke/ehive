@@ -1,15 +1,26 @@
 <phpunit
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/5.7/phpunit.xsd"
-    bootstrap="tests/bootstrap.php"
-    colors="true"
-    convertWarningsToExceptions="false"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/5.7/phpunit.xsd"
+        bootstrap="tests/bootstrap.php"
+        colors="true"
+        convertWarningsToExceptions="false"
 >
     <testsuites>
-        <testsuite name="ehive">
+        <testsuite name="EHive Unit tests">
             <directory>tests</directory>
+            <exclude>tests/FunctionalApiClientTest.php</exclude>
         </testsuite>
     </testsuites>
+
+    <php>
+        <!-- Fill these out with values for your account to use in the Functional test -->
+        <env name="CLIENT_ID" value="06f28596f88c4be7a27dbb44bd4f7f20"/>
+        <env name="CLIENT_SECRET" value="2fd08f010c1f49179eb68b7e4e9d212b"/>
+        <env name="TRACKING_ID" value="d8ef221022694e94b9083a1f60e67db5"/>
+        <env name="ACCOUNT_ID" value="3001"/>
+        <env name="COMMUNITY_ID" value="1000"/>
+        <env name="OBJECT_ID" value="586221"/>
+    </php>
 
     <filter>
         <whitelist processUncoveredFilesFromWhitelist="true">

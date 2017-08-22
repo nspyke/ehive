@@ -1,0 +1,31 @@
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/5.7/phpunit.xsd"
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    convertWarningsToExceptions="false"
+>
+    <testsuites>
+        <testsuite name="EHive Unit tests">
+            <directory>tests</directory>
+            <exclude>tests/FunctionalApiClientTest.php</exclude>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <!-- Fill these out with the values of your account to use in the Functional test -->
+        <env name="CLIENT_ID" value=""/>
+        <env name="CLIENT_SECRET" value=""/>
+        <env name="TRACKING_ID" value=""/>
+        <env name="ACCOUNT_ID" value=""/>
+        <env name="COMMUNITY_ID" value=""/>
+        <env name="OBJECT_ID" value=""/>
+    </php>
+
+    <filter>
+        <whitelist processUncoveredFilesFromWhitelist="true">
+            <directory suffix=".php">src</directory>
+        </whitelist>
+
+    </filter>
+</phpunit>
