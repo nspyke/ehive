@@ -34,8 +34,12 @@ class HelperTest extends \PHPUnit_Framework_TestCase
             ['library'],
             ['natural_science'],
             ['photography'],
-            [''],
         ];
+    }
+
+    public function testUrlWithNoCatalogueType()
+    {
+        $this->assertEquals('foo', Helper::urlWithCatalogueType('foo', ''));
     }
 
     /**

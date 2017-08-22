@@ -37,10 +37,10 @@ class Helper
             case 'library':
             case 'natural_science':
             case 'photography':
-            case '':
                 return $path . '/' . $catalogueType;
                 break;
-
+            case '':
+                return $path;
             default:
                 throw new ApiException('Invalid catalogue type: "' . $catalogueType . '"');
         }
