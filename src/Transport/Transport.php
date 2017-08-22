@@ -79,6 +79,11 @@ class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareI
     private $cacheTtl = 3600;
 
     /**
+     * @var bool
+     */
+    private $cacheEnabled = true;
+
+    /**
      * @var LoggerInterface
      */
     private $logger;
@@ -177,6 +182,18 @@ class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareI
     }
 
     /**
+     * @param bool $cacheEnabled
+     *
+     * @return $this
+     */
+    public function setCacheEnabled($cacheEnabled)
+    {
+        $this->cacheEnabled = $cacheEnabled;
+
+        return $this;
+    }
+
+    /**
      * Set a PSR-3 compatible logger object
      *
      * @param LoggerInterface $logger
@@ -202,7 +219,7 @@ class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareI
     {
         // Look in the cache first.
         $key = $this->cacheKey($path, $queryString);
-        if ($this->cache->has($key)) {
+        if ($this->cache->has($key) and $this->cacheEnabled) {
             return $this->cache->get($key);
         }
 
@@ -243,7 +260,10 @@ class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareI
         switch ($httpResponseCode) {
             case 200:
                 $json = json_decode($response);
-                $this->cache->set($this->cacheKey($path, $queryString), $json, $this->cacheTtl);
+
+                if ($this->cacheEnabled) {
+                    $this->cache->set($this->cacheKey($path, $queryString), $json, $this->cacheTtl);
+                }
 
                 return $json;
 
@@ -487,7 +507,6 @@ class Transport implements TransportInterface, LoggerAwareInterface, CacheAwareI
         curl_setopt($ch, CURLOPT_POST, 1);
         curl_setopt($ch, CURLOPT_HEADER, 1);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_VERBOSE, 1);
 
         $headers = [
             'Content-Type: application/x-www-form-urlencoded',

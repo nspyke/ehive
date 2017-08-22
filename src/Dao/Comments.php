@@ -18,6 +18,7 @@ namespace EHive\Dao;
 use EHive\Domain\Comment\Comment;
 use EHive\Domain\Comment\CommentsCollection;
 use EHive\ApiClient;
+use EHive\Transport\CacheAwareInterface;
 use EHive\Transport\TransportInterface;
 
 class Comments
@@ -33,6 +34,11 @@ class Comments
     {
         $path = ApiClient::VERSION_ID . "/objectrecords/{$objectRecordId}/comments";
         $queryString = "offset={$offset}&limit={$limit}";
+
+        if ($this->transport instanceof CacheAwareInterface) {
+            $this->transport->setCacheEnabled(false);
+        }
+
         $json = $this->transport->get($path, $queryString);
         $responseCommentsCollection = new CommentsCollection($json);
 

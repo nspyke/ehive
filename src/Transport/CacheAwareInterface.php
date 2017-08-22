@@ -19,4 +19,11 @@ interface CacheAwareInterface
      * @return $this
      */
     public function setCacheTtl($ttl);
+
+    /**
+     * @param bool $bool
+     *
+     * @return $this
+     */
+    public function setCacheEnabled($bool);
 }
