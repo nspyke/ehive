@@ -34,7 +34,7 @@ class TagCloud
     {
         $path = ApiClient::VERSION_ID . "/objectrecords/tagcloud";
         $queryString = isset($limit) ? "limit={$limit}" : "";
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new Domain\TagCloud\TagCloud($json);
     }
@@ -43,7 +43,7 @@ class TagCloud
     {
         $path = ApiClient::VERSION_ID . "/accounts/{$accountId}/objectrecords/tagcloud";
         $queryString = isset($limit) ? "limit={$limit}" : "";
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new Domain\TagCloud\TagCloud($json);
     }
@@ -52,7 +52,7 @@ class TagCloud
     {
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/objectrecords/tagcloud";
         $queryString = isset($limit) ? "limit={$limit}" : "";
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new Domain\TagCloud\TagCloud($json);
     }

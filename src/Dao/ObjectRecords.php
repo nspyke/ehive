@@ -46,7 +46,7 @@ class ObjectRecords
 
         $path = ApiClient::VERSION_ID . "/objectrecords";
         $queryString = Helper::getObjectsQueryString($query, $hasImages, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -72,7 +72,7 @@ class ObjectRecords
             $limit,
             $content
         );
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -82,7 +82,7 @@ class ObjectRecords
 
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/objectrecords";
         $queryString = Helper::getObjectsQueryString($query, $hasImages, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -100,7 +100,7 @@ class ObjectRecords
 
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/accounts/{$accountId}/objectrecords";
         $queryString = Helper::getObjectsQueryString($query, $hasImages, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }

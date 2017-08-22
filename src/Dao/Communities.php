@@ -41,7 +41,7 @@ class Communities
     {
         $path = ApiClient::VERSION_ID . "/communities";
         $queryString = Helper::getCommunitiesQueryString($query, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new CommunitiesCollection($json);
     }

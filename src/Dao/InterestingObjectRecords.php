@@ -34,7 +34,7 @@ class InterestingObjectRecords
         $path = ApiClient::VERSION_ID . "/objectrecords/interesting";
         $path = Helper::urlWithCatalogueType($path, $catalogueType);
         $queryString = Helper::getObjectsQueryString(null, $hasImages, null, null, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -50,7 +50,7 @@ class InterestingObjectRecords
         $path = ApiClient::VERSION_ID . "/accounts/{$accountId}/objectrecords/interesting";
         $path = Helper::urlWithCatalogueType($path, $catalogueType);
         $queryString = Helper::getObjectsQueryString(null, $hasImages, null, null, $offset, $limit, $content);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -60,7 +60,7 @@ class InterestingObjectRecords
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/objectrecords/interesting";
         $path = Helper::urlWithCatalogueType($path, $catalogueType);
         $queryString = Helper::getObjectsQueryString(null, $hasImages, null, null, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }
@@ -76,7 +76,7 @@ class InterestingObjectRecords
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/accounts/{$accountId}/objectrecords/interesting";
         $path = Helper::urlWithCatalogueType($path, $catalogueType);
         $queryString = Helper::getObjectsQueryString(null, $hasImages, null, null, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new ObjectRecordsCollection($json);
     }

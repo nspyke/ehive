@@ -56,7 +56,7 @@ class Accounts
     {
         $path = ApiClient::VERSION_ID . "/accounts";
         $queryString = Helper::getAccountsQueryString($query, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new AccountsCollection($json);
     }
@@ -65,7 +65,7 @@ class Accounts
     {
         $path = ApiClient::VERSION_ID . "/communities/{$communityId}/accounts";
         $queryString = Helper::getAccountsQueryString($query, $sort, $direction, $offset, $limit);
-        $json = $this->transport->get($path, $queryString, true);
+        $json = $this->transport->get($path, $queryString);
 
         return new AccountsCollection($json);
     }
