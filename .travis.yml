@@ -7,7 +7,12 @@ php:
 install:
   - composer install
   - cp phpunit.xml.dist phpunit.xml
+  - wget https://github.com/php-coveralls/php-coveralls/releases/download/v1.0.1/coveralls.phar
+  - chmod +x coveralls.phar
 
 script:
   - vendor/bin/phpcs --error-severity=1 --warning-severity=7
-  - phpunit
+  - phpunit --coverage-clover ./tests/logs/clover.xml
+
+after_script:
+- php coveralls.phar -v

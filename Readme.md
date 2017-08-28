@@ -1,6 +1,7 @@
 # EHive API Client
 
 [![Build Status](https://travis-ci.org/nspyke/ehive.svg?branch=master)](https://travis-ci.org/nspyke/ehive)
+[![Coverage Status](https://coveralls.io/repos/github/nspyke/ehive/badge.svg?branch=master)](https://coveralls.io/github/nspyke/ehive?branch=master)
 
 Fork of the EHive PHP client version 2.1.2 released by Vernon Systems in August 2017, under the GPL v2 licence.
 This library has been released under GPL v3 licence.
@@ -24,7 +25,7 @@ $client = new ApiClient($transport);
 
 Then call the methods on the ApiClient object to get the relevant domain object.
 
-#### Caching
+#### Caching (optional)
 [PSR-16](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-16-simple-cache.md) simple caching has been 
 implemented to cache GET requests. We recommend [symfony/cache](https://packagist.org/packages/symfony/cache), but
 any implementation can be used. You can find implementations by looking for packages providing 
@@ -38,7 +39,7 @@ $transport->setCache($cache);
 $client = new ApiClient($transport);
 ```
 
-#### Logging
+#### Logging (optional)
 [PSR-3](https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-3-logger-interface.md) logging has also been
 implemented to log errors. We recommend using [monolog/monolog](https://packagist.org/packages/monolog/monolog).
 
